@@ -1,0 +1,66 @@
+// Copyright (C) 2026 刘恺知
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+
+// AsyncLogProcessor.hpp 异步日志处理器头文件
+
+// include/log/AsyncLogProcessor.hpp
+#pragma once
+
+#include "include/LogMessage.hpp"
+#include <atomic>
+#include <memory>
+#include <vector>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+
+namespace Log {
+
+    class AsyncLogProcessor {
+    public:
+        AsyncLogProcessor(size_t queue_size = 10000);
+        ~AsyncLogProcessor();
+
+        void Start();
+        void Stop();
+        void Submit(Message&& msg);
+
+        // 性能统计
+        struct Stats {
+            size_t total_processed;
+            size_t dropped_messages;
+            size_t queue_size;
+            double avg_process_time_ms;
+        };
+
+        Stats GetStats() const;
+
+    private:
+        void WorkerThread();
+        void ProcessBatch(std::vector<Message>& batch);
+
+    private:
+        std::atomic<bool> running_{ false };
+        std::thread worker_thread_;
+
+        // 双缓冲队列
+        std::queue<Message> queue1_;
+        std::queue<Message> queue2_;
+        std::queue<Message>* active_queue_{ &queue1_ };
+        std::queue<Message>* inactive_queue_{ &queue2_ };
+
+        std::mutex queue_mutex_;
+        std::condition_variable queue_cv_;
+
+        size_t max_queue_size_;
+        std::atomic<size_t> dropped_count_{ 0 };
+        std::atomic<size_t> processed_count_{ 0 };
+
+        // 处理批次的sinks
+        std::vector<std::unique_ptr<Sink>> sinks_;
+        mutable std::mutex sinks_mutex_;
+    };
+
+} // namespace Log
